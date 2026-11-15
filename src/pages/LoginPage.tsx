@@ -49,12 +49,14 @@ export default function LoginPage() {
           label="Email"
           type="email"
           autoComplete="email"
+          placeholder="demo_user@gmail.com"
           error={errors.email?.message}
           {...register('email')}
         />
         <TextInput
           label="Password"
           type="password"
+          placeholder="********"
           autoComplete="current-password"
           error={errors.password?.message}
           {...register('password')}
