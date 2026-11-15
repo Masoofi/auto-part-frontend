@@ -21,6 +21,9 @@ export class ApiError extends Error {
 const client = axios.create({
   // Dev: relative `/api`, proxied by Vite. Production: set VITE_API_URL to the API origin.
   baseURL: import.meta.env.VITE_API_URL ?? '/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
 })
 
 client.interceptors.request.use((config) => {
