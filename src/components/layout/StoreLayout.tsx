@@ -71,13 +71,16 @@ export function StoreLayout() {
 
   const links = (
     <>
-      <NavLink to="/products" className={navLink} onClick={() => setMenuOpen(false)}>
-        Products
-      </NavLink>
       {user && (
+        <>
+        <NavLink to="/products" className={navLink} onClick={() => setMenuOpen(false)}>
+          Products
+        </NavLink>
+      
         <NavLink to="/orders" className={navLink} onClick={() => setMenuOpen(false)}>
           My orders
         </NavLink>
+      </> 
       )}
       {user?.role === 'ADMIN' && (
         <NavLink to="/admin" className={navLink} onClick={() => setMenuOpen(false)}>
