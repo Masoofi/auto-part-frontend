@@ -2,3 +2,7 @@
 node_modules/
 dist/
 coverage/
+# Never commit compiled output: Vite would resolve a stray .js before its .tsx source.
+src/**/*.js
+vite.config.js
+*.tsbuildinfo
