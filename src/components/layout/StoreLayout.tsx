@@ -106,9 +106,13 @@ export function StoreLayout() {
             {links}
           </nav>
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
-            <HeaderSearch />
-            <CartLink />
-            {user ? (
+            {user && (
+              <>
+                <HeaderSearch />
+                <CartLink />
+              </>
+            )}
+            {user &&  (
               <div className="hidden items-center gap-1 md:flex">
                 <span className="px-2 text-sm text-slate-700">Hi, {user.firstName}</span>
                 <Button
@@ -122,11 +126,12 @@ export function StoreLayout() {
                   <Icon name="logout" size={18} />
                 </Button>
               </div>
-            ) : (
-              <ButtonLink to="/login" variant="dark" className="hidden md:inline-flex">
-                Sign in
-              </ButtonLink>
-            )}
+            //    ) : (
+            //   <ButtonLink to="/login" variant="dark" className="hidden md:inline-flex">
+            //     Sign in
+            //   </ButtonLink>
+            // )}
+            )} 
             <Button
               variant="ghost"
               className="md:hidden"
