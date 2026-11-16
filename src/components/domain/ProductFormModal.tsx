@@ -1,12 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useCategories } from '@/api/categories'
-import { useCreateProduct, useUpdateProduct, type ProductInput } from '@/api/products'
+import {
+  useCreateProduct,
+  useDeleteProductImage,
+  useUpdateProduct,
+  useUploadProductImage,
+  type ProductInput,
+} from '@/api/products'
+import { toast } from '@/store/toast'
 import type { Product } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Select, TextInput, Textarea } from '@/components/ui/Field'
+import { ImageUpload } from '@/components/ui/ImageUpload'
 import { Modal } from '@/components/ui/Modal'
 
 // Fields are strings in the form; they are converted when sent to the API.
@@ -19,14 +27,6 @@ const schema = z.object({
     .refine((v) => /^\d+(\.\d{1,2})?$/.test(v) && Number(v) > 0, 'Enter a price above 0 (max 2 decimals)'),
   stock: z.string().refine((v) => /^\d+$/.test(v), 'Enter a whole number, 0 or more'),
   brand: z.string().trim(),
-  imageUrl: z.string().trim().refine((v) => {
-    if (!v) return true
-    try {
-      return ['http:', 'https:'].includes(new URL(v).protocol)
-    } catch {
-      return false
-    }
-  }, 'Enter a full image URL starting with https://'),
   description: z.string().trim(),
 })
 type FormValues = z.infer<typeof schema>
@@ -38,7 +38,6 @@ const emptyValues: FormValues = {
   price: '',
   stock: '0',
   brand: '',
-  imageUrl: '',
   description: '',
 }
 
@@ -49,10 +48,10 @@ const toFormValues = (p: Product): FormValues => ({
   price: p.price,
   stock: String(p.stock),
   brand: p.brand ?? '',
-  imageUrl: p.imageUrl ?? '',
   description: p.description ?? '',
 })
 
+// The image is not part of this payload: it is uploaded separately once the product exists.
 const toInput = (v: FormValues): ProductInput => ({
   sku: v.sku,
   name: v.name,
@@ -60,7 +59,6 @@ const toInput = (v: FormValues): ProductInput => ({
   price: Number(v.price),
   stock: Number(v.stock),
   brand: v.brand,
-  imageUrl: v.imageUrl,
   description: v.description,
 })
 
@@ -71,37 +69,71 @@ interface ProductFormModalProps {
   onClose: () => void
 }
 
+/** Mounts the form only while open, so every opening starts from clean state. */
 export function ProductFormModal({ open, product, onClose }: ProductFormModalProps) {
+  if (!open) return null
+  return <ProductForm key={product?.id ?? 'new'} product={product} onClose={onClose} />
+}
+
+function ProductForm({ product, onClose }: Omit<ProductFormModalProps, 'open'>) {
   const categories = useCategories()
   const create = useCreateProduct()
   const update = useUpdateProduct()
+  const uploadImage = useUploadProductImage()
+  const deleteImage = useDeleteProductImage()
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imageRemoved, setImageRemoved] = useState(false)
+  const [saving, setSaving] = useState(false)
   const {
     register,
     handleSubmit,
-    reset,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: emptyValues })
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: product ? toFormValues(product) : emptyValues,
+  })
 
-  useEffect(() => {
-    if (open) reset(product ? toFormValues(product) : emptyValues)
-  }, [open, product, reset])
-
-  const saving = create.isPending || update.isPending
-
-  const onSubmit = (values: FormValues) => {
+  const onSubmit = async (values: FormValues) => {
     const input = toInput(values)
-    if (product) update.mutate({ id: product.id, input }, { onSuccess: onClose })
-    else create.mutate(input, { onSuccess: onClose })
+    setSaving(true)
+    try {
+      // Failures here are already toasted by the query client; keep the form open to retry.
+      let id: string
+      if (product) {
+        await update.mutateAsync({ id: product.id, input })
+        id = product.id
+      } else {
+        id = (await create.mutateAsync(input)).id
+      }
+
+      // The product is saved at this point. An image failure must not block closing,
+      // otherwise a retry would try to create the same SKU again.
+      let imageFailed = false
+      try {
+        if (imageFile) await uploadImage.mutateAsync({ id, file: imageFile })
+        else if (imageRemoved && product?.imageUrl) await deleteImage.mutateAsync(id)
+      } catch {
+        imageFailed = true
+      }
+
+      if (imageFailed) toast.error('Product saved, but the image failed. Edit the product to retry.')
+      else toast.success(product ? 'Product updated' : 'Product created')
+      onClose()
+    } catch {
+      // Already reported.
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <Modal
-      open={open}
+      open
       title={product ? 'Edit product' : 'New product'}
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button type="submit" form="product-form" loading={saving}>
@@ -138,12 +170,17 @@ export function ProductFormModal({ open, product, onClose }: ProductFormModalPro
             {...register('stock')}
           />
         </div>
-        <TextInput
-          label="Image URL"
-          type="url"
-          placeholder="https://"
-          error={errors.imageUrl?.message}
-          {...register('imageUrl')}
+        <ImageUpload
+          label="Product image"
+          currentUrl={product?.imageUrl}
+          currentRemoved={imageRemoved}
+          file={imageFile}
+          onChange={(file) => {
+            setImageFile(file)
+            if (file) setImageRemoved(false)
+          }}
+          onRemoveCurrent={() => setImageRemoved(true)}
+          disabled={saving}
         />
         <Textarea label="Description" error={errors.description?.message} {...register('description')} />
       </form>

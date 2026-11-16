@@ -48,17 +48,24 @@ export const useProduct = (id: string | undefined) =>
     enabled: Boolean(id),
   })
 
-function useProductMutation<TInput>(
-  fn: (input: TInput) => Promise<unknown>,
-  successMessage: string,
-) {
+function useRefreshProducts() {
   const queryClient = useQueryClient()
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ['products'] })
+    void queryClient.invalidateQueries({ queryKey: ['product'] })
+  }
+}
+
+function useProductMutation<TInput, TData>(
+  fn: (input: TInput) => Promise<TData>,
+  successMessage: string | null,
+) {
+  const refresh = useRefreshProducts()
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['products'] })
-      void queryClient.invalidateQueries({ queryKey: ['product'] })
-      toast.success(successMessage)
+      refresh()
+      if (successMessage) toast.success(successMessage)
     },
   })
 }
@@ -66,15 +73,35 @@ function useProductMutation<TInput>(
 export const useCreateProduct = () =>
   useProductMutation(
     (input: ProductInput) =>
-      request({ method: 'POST', url: '/products', data: cleanParams(input) }),
-    'Product created',
+      request<Product>({ method: 'POST', url: '/products', data: cleanParams(input) }),
+    null,
+  )
+
+/** Sends the file as multipart form data (field name `image`). Silent on success: the form reports. */
+export const useUploadProductImage = () =>
+  useProductMutation(({ id, file }: { id: string; file: File }) => {
+    const data = new FormData()
+    data.append('image', file)
+    // The client defaults to JSON, which would flatten FormData (and the File) into `{}`.
+    return request({
+      method: 'PATCH',
+      url: `/products/${id}/image`,
+      data,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }, null)
+
+export const useDeleteProductImage = () =>
+  useProductMutation(
+    (id: string) => request({ method: 'DELETE', url: `/products/${id}/image` }),
+    null,
   )
 
 export const useUpdateProduct = () =>
   useProductMutation(
     ({ id, input }: { id: string; input: Partial<ProductInput> }) =>
       request({ method: 'PATCH', url: `/products/${id}`, data: cleanParams(input) }),
-    'Product updated',
+    null,
   )
 
 export const useDeactivateProduct = () =>
